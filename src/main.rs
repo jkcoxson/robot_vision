@@ -12,7 +12,9 @@ use tokio::net::TcpListener;
 async fn main() {
     tokio::spawn( async {
         let mut cam = VideoCapture::new(0, opencv::videoio::CAP_ANY).unwrap();
+        let mut cam2 = VideoCapture::new(1, opencv::videoio::CAP_ANY).unwrap();
         opencv::highgui::named_window("your mom", opencv::highgui::WINDOW_AUTOSIZE).unwrap();
+        opencv::highgui::named_window("my mom", opencv::highgui::WINDOW_AUTOSIZE).unwrap();
         let mut frame = Mat::default();
         loop {
             cam.read(&mut frame).unwrap();
