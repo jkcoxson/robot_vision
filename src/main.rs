@@ -22,6 +22,11 @@ async fn main() {
                 Ok(()) => {},
                 Err(e) => println!("{}", e)
             }
+            cam2.read(&mut frame).unwrap();
+            match opencv::highgui::imshow("my mom", &frame) {
+                Ok(()) => {},
+                Err(e) => println!("{}", e)
+            }
             let key = opencv::highgui::wait_key(1).unwrap();
             if key == 27 {
                 break;
