@@ -6,7 +6,7 @@ use tokio::{sync::{mpsc::UnboundedSender, Mutex}, net::TcpListener, io::{AsyncWr
 
 
 pub struct Tcp {
-    Sender: UnboundedSender<serde_json::Value>,
+    pub sender: UnboundedSender<serde_json::Value>,
 
     // Robot values
     accel: Arc<Mutex<(f64, f64, f64)>>,
@@ -20,7 +20,7 @@ pub struct Tcp {
 impl Tcp {
     /// Starts a new TCP server and gives Arc reactor access to the values
     pub fn new() -> Self {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let accel = Arc::new(Mutex::new((0.0, 0.0, 0.0)));
         let gyro = Arc::new(Mutex::new((0.0, 0.0, 0.0)));
         let mag = Arc::new(Mutex::new((0.0, 0.0, 0.0)));
@@ -44,7 +44,7 @@ impl Tcp {
 
             // Connect Loop
             loop {
-                let (a, b) = match listener.accept().await {
+                let (mut stream, addr) = match listener.accept().await {
                     Ok((a, b)) => (a, b),
                     Err(e) => {
                         println!("{}", e);
@@ -52,7 +52,7 @@ impl Tcp {
                     }
                 };
                 // We aren't waiting for any other connections at the same time so we will keep this in the same thread.
-                let (reader, writer) = a.split();
+                let (mut reader, mut writer) = stream.split();
                 // let read_stream = tokio::io::BufReader::new(reader);
                 
                 loop {
@@ -114,7 +114,7 @@ impl Tcp {
             }
         });
         Tcp {
-            Sender: tx,
+            sender: tx,
             accel,
             gyro,
             mag,
@@ -131,22 +131,41 @@ impl Tcp {
             "spin": spin,
             "duration": duration,
         });
-        let _ = self.Sender.send(msg);
+        let _ = self.sender.send(msg);
     }
 
     pub fn send(&self, msg: serde_json::Value) {
-        let _ = self.Sender.send(msg);
+        let _ = self.sender.send(msg);
     }
 
     pub fn send_string(&self, msg: String) {
-        let _ = self.Sender.send(serde_json::from_str(&msg).unwrap());
+        let _ = self.sender.send(serde_json::from_str(&msg).unwrap());
+    }
+
+    pub async fn get_accel(&self) -> (f64, f64, f64) {
+        *self.accel.lock().await
+    }
+    pub async fn get_gyro(&self) -> (f64, f64, f64) {
+        *self.gyro.lock().await
+    }
+    pub async fn get_mag(&self) -> (f64, f64, f64) {
+        *self.mag.lock().await
+    }
+    pub async fn get_yaw(&self) -> f64 {
+        *self.yaw.lock().await
+    }
+    pub async fn get_pitch(&self) -> f64 {
+        *self.pitch.lock().await
+    }
+    pub async fn get_roll(&self) -> f64 {
+        *self.roll.lock().await
     }
 }
 
 impl Clone for Tcp {
     fn clone(&self) -> Self {
         Tcp {
-            Sender: self.Sender.clone(),
+            sender: self.sender.clone(),
             accel: self.accel.clone(),
             gyro: self.gyro.clone(),
             mag: self.mag.clone(),
