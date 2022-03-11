@@ -3,45 +3,34 @@
 /// Jackson Coxson, Josh Something, Wesley Something ///
 ///                     2022                         ///
 ////////////////////////////////////////////////////////
-
-use opencv::prelude::*;
-use opencv::videoio::VideoCapture;
-use tokio::net::TcpListener;
-mod tcp;
+use nt::{EntryData, NetworkTables};
+mod constants;
 mod robot;
+mod tcp;
 
 #[tokio::main]
 async fn main() {
-    tokio::spawn( async {
-        let mut cam = VideoCapture::new(0, opencv::videoio::CAP_ANY).unwrap();
-        let mut cam2 = VideoCapture::new(1, opencv::videoio::CAP_ANY).unwrap();
-        opencv::highgui::named_window("your mom", opencv::highgui::WINDOW_AUTOSIZE).unwrap();
-        opencv::highgui::named_window("my mom", opencv::highgui::WINDOW_AUTOSIZE).unwrap();
-        let mut frame = Mat::default();
-        loop {
-            cam.read(&mut frame).unwrap();
-            match opencv::highgui::imshow("your mom", &frame) {
-                Ok(()) => {},
-                Err(e) => println!("{}", e)
-            }
-            cam2.read(&mut frame).unwrap();
-            match opencv::highgui::imshow("my mom", &frame) {
-                Ok(()) => {},
-                Err(e) => println!("{}", e)
-            }
-            let key = opencv::highgui::wait_key(1).unwrap();
-            if key == 27 {
-                break;
-            }
-        }
-    });
-    
+    tokio::spawn(async {});
 
-    // Create a TCP listener on port 6969
-    let listener = TcpListener::bind("0.0.0.0:6969").await.unwrap();
-    loop {
-        // Accept a new connection
-        let (_, _) = listener.accept().await.unwrap();
-        println!("Got a connection!");
+    let mut nt = NetworkTables::connect(constants::TABLE_IP, constants::TABLE_CLIENT_NAME)
+        .await
+        .unwrap();
+    let mut ty = None;
+    let entries = nt.entries();
+    for i in entries.values().into_iter() {
+        if i.name == "/limelight/ty" {
+            ty = Some(i);
+        }
     }
+    println!("{:?}", ty);
+
+    // let tcp = tcp::Tcp::new();
+    // loop {
+    //     tcp.spin_motor(2, 0.8, 0);
+    //     // tcp.spin_motor(1, 50.0, 0);
+    //     std::thread::sleep(std::time::Duration::from_millis(1000));
+    //     tcp.spin_motor(2, 0.0, 0);
+    //     // tcp.spin_motor(1, 0.0, 0);
+    //     std::thread::sleep(std::time::Duration::from_millis(1000));
+    // }
 }

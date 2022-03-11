@@ -42,6 +42,7 @@ impl Tcp {
             let roll = roll_clone;
             let listener = TcpListener::bind("0.0.0.0:6969").await.expect("Starting tcp server failure!!");
 
+            println!("Network loop started, awaiting connection");
             // Connect Loop
             loop {
                 let (mut stream, addr) = match listener.accept().await {
@@ -51,6 +52,7 @@ impl Tcp {
                         continue;
                     }
                 };
+                println!("Recieved connection from {:?}", addr);
                 // We aren't waiting for any other connections at the same time so we will keep this in the same thread.
                 let (mut reader, mut writer) = stream.split();
                 // let read_stream = tokio::io::BufReader::new(reader);
@@ -60,7 +62,11 @@ impl Tcp {
                     tokio::select! {
                         msg = rx.recv() => {
                             let msg = msg.unwrap();
-                            let _ = writer.write_all(serde_json::to_string(&msg).unwrap().as_bytes());
+                            match writer.write_all((serde_json::to_string(&msg).unwrap() + "\n").as_bytes()).await {
+                                Ok(_) => {},
+                                Err(_) => println!("bad idk"),
+                            }
+                            writer.flush().await.unwrap();
                         },
                         _ = reader.read_buf(&mut buf) => {
                             let msg = match String::from_utf8(buf) {
@@ -70,6 +76,10 @@ impl Tcp {
                                     break;
                                 }
                             };
+                            if msg.len() < 5 {
+                                println!("Robot disconnected, listening for new connection...");
+                                break;
+                            }
                             let msg: serde_json::Value = match serde_json::from_str(&msg) {
                                 Ok(msg) => msg,
                                 Err(e) => {
@@ -126,7 +136,7 @@ impl Tcp {
     
     pub fn spin_motor(&self, motor: u8, spin: f64, duration: u8) {
         let msg = serde_json::json!({
-            "name": "spin_motor",
+            "name": "motor_control",
             "motor": motor,
             "spin": spin,
             "duration": duration,

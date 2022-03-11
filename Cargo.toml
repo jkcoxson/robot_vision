@@ -10,3 +10,4 @@ opencv = { version = "*" }
 tokio = { version = "*", features = ["full"] }
 serde =  { version = "*" }
 serde_json = { version = "*" }
+nt = { version = "*" }
