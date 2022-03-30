@@ -2,45 +2,45 @@
 
 use std::sync::Arc;
 
-use tokio::{sync::{mpsc::UnboundedSender, Mutex}, net::TcpListener, io::{AsyncWriteExt, AsyncReadExt}};
-
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpListener,
+    sync::{mpsc::UnboundedSender, Mutex},
+};
 
 pub struct Tcp {
     pub sender: UnboundedSender<serde_json::Value>,
 
     // Robot values
-    accel: Arc<Mutex<(f64, f64, f64)>>,
-    gyro: Arc<Mutex<(f64, f64, f64)>>,
-    mag: Arc<Mutex<(f64, f64, f64)>>,
-    yaw: Arc<Mutex<f64>>,
-    pitch: Arc<Mutex<f64>>,
-    roll: Arc<Mutex<f64>>,
+    robot_values: Arc<Mutex<Robot_Values>>,
+}
+
+pub struct Robot_Values {
+    pub accel: (f64, f64, f64),
+    pub gyro: (f64, f64, f64),
+    pub mag: (f64, f64, f64),
+    pub yaw: f64,
+    pub pitch: f64,
+    pub roll: f64,
 }
 
 impl Tcp {
     /// Starts a new TCP server and gives Arc reactor access to the values
     pub fn new() -> Self {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        let accel = Arc::new(Mutex::new((0.0, 0.0, 0.0)));
-        let gyro = Arc::new(Mutex::new((0.0, 0.0, 0.0)));
-        let mag = Arc::new(Mutex::new((0.0, 0.0, 0.0)));
-        let yaw = Arc::new(Mutex::new(0.0));
-        let pitch = Arc::new(Mutex::new(0.0));
-        let roll = Arc::new(Mutex::new(0.0));
-        let accel_clone = accel.clone();
-        let gyro_clone = gyro.clone();
-        let mag_clone = mag.clone();
-        let yaw_clone = yaw.clone();
-        let pitch_clone = pitch.clone();
-        let roll_clone = roll.clone();
+        let robot_values = Arc::new(Mutex::new(Robot_Values {
+            accel: (0.0, 0.0, 0.0),
+            gyro: (0.0, 0.0, 0.0),
+            mag: (0.0, 0.0, 0.0),
+            yaw: 0.0,
+            pitch: 0.0,
+            roll: 0.0,
+        }));
+        let robot_values_return = robot_values.clone();
         tokio::spawn(async move {
-            let accel = accel_clone;
-            let gyro = gyro_clone;
-            let mag = mag_clone;
-            let yaw = yaw_clone;
-            let pitch = pitch_clone;
-            let roll = roll_clone;
-            let listener = TcpListener::bind("0.0.0.0:6969").await.expect("Starting tcp server failure!!");
+            let listener = TcpListener::bind("0.0.0.0:6969")
+                .await
+                .expect("Starting tcp server failure!!");
 
             println!("Network loop started, awaiting connection");
             // Connect Loop
@@ -56,7 +56,7 @@ impl Tcp {
                 // We aren't waiting for any other connections at the same time so we will keep this in the same thread.
                 let (mut reader, mut writer) = stream.split();
                 // let read_stream = tokio::io::BufReader::new(reader);
-                
+
                 loop {
                     let mut buf = vec![];
                     tokio::select! {
@@ -87,7 +87,7 @@ impl Tcp {
                                     continue;
                                 }
                             };
-                            
+
                             // Parse message
                             let msg_type = match msg["name"].as_str() {
                                 Some(msg_type) => msg_type,
@@ -106,12 +106,13 @@ impl Tcp {
                                     let pitch_val = msg["pitch"].as_f64().unwrap();
                                     let roll_val = msg["roll"].as_f64().unwrap();
 
-                                    *accel.lock().await = (accel_val[0].as_f64().unwrap(), accel_val[1].as_f64().unwrap(), accel_val[2].as_f64().unwrap());
-                                    *gyro.lock().await = (gyro_val[0].as_f64().unwrap(), gyro_val[1].as_f64().unwrap(), gyro_val[2].as_f64().unwrap());
-                                    *mag.lock().await = (mag_val[0].as_f64().unwrap(), mag_val[1].as_f64().unwrap(), mag_val[2].as_f64().unwrap());
-                                    *yaw.lock().await = yaw_val;
-                                    *pitch.lock().await = pitch_val;
-                                    *roll.lock().await = roll_val;
+                                    let mut lock = robot_values.lock().await;
+                                    lock.accel = (accel_val[0].as_f64().unwrap(), accel_val[1].as_f64().unwrap(), accel_val[2].as_f64().unwrap());
+                                    lock.gyro = (gyro_val[0].as_f64().unwrap(), gyro_val[1].as_f64().unwrap(), gyro_val[2].as_f64().unwrap());
+                                    lock.mag = (mag_val[0].as_f64().unwrap(), mag_val[1].as_f64().unwrap(), mag_val[2].as_f64().unwrap());
+                                    lock.yaw = yaw_val;
+                                    lock.pitch = pitch_val;
+                                    lock.roll = roll_val;
                                 },
                                 _ => {
                                     println!("Unknown message type: {}", msg_type);
@@ -120,20 +121,14 @@ impl Tcp {
                         }
                     }
                 }
-                
             }
         });
         Tcp {
             sender: tx,
-            accel,
-            gyro,
-            mag,
-            yaw,
-            pitch,
-            roll,
+            robot_values: robot_values_return,
         }
     }
-    
+
     pub fn spin_motor(&self, motor: u8, spin: f64, duration: u8) {
         let msg = serde_json::json!({
             "name": "motor_control",
@@ -153,22 +148,22 @@ impl Tcp {
     }
 
     pub async fn get_accel(&self) -> (f64, f64, f64) {
-        *self.accel.lock().await
+        self.robot_values.lock().await.accel
     }
     pub async fn get_gyro(&self) -> (f64, f64, f64) {
-        *self.gyro.lock().await
+        self.robot_values.lock().await.gyro
     }
     pub async fn get_mag(&self) -> (f64, f64, f64) {
-        *self.mag.lock().await
+        self.robot_values.lock().await.mag
     }
     pub async fn get_yaw(&self) -> f64 {
-        *self.yaw.lock().await
+        self.robot_values.lock().await.yaw
     }
     pub async fn get_pitch(&self) -> f64 {
-        *self.pitch.lock().await
+        self.robot_values.lock().await.pitch
     }
     pub async fn get_roll(&self) -> f64 {
-        *self.roll.lock().await
+        self.robot_values.lock().await.roll
     }
 }
 
@@ -176,12 +171,7 @@ impl Clone for Tcp {
     fn clone(&self) -> Self {
         Tcp {
             sender: self.sender.clone(),
-            accel: self.accel.clone(),
-            gyro: self.gyro.clone(),
-            mag: self.mag.clone(),
-            yaw: self.yaw.clone(),
-            pitch: self.pitch.clone(),
-            roll: self.roll.clone(),
+            robot_values: self.robot_values.clone(),
         }
     }
 }
